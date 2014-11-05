@@ -19,7 +19,7 @@ class TIMIT(DenseDesignMatrix):
         assert which_set in ['train','dev','test']
 
         filedir = '/dataset/kaldi/data-fmllr-tri3-edited' 
-        filename = self.which_set + '_features' + self.extension
+        filename = self.which_set + '_mono_features' + self.extension
         self.filepath = os.path.join(filedir,filename)
         
         # Load data
@@ -47,7 +47,7 @@ class TIMIT(DenseDesignMatrix):
             self.uttname,
             self.uttlength,
             self.feats,
-            ]=data[self.which_set+'_features'][0][0]
+            ]=data[self.which_set+'_mono_features'][0][0]
 
         elif self.which_set == 'dev':
             [self.uttidx,
@@ -55,7 +55,7 @@ class TIMIT(DenseDesignMatrix):
             self.uttname,
             self.uttlength,
             self.feats,
-            ]=data[self.which_set+'_features'][0][0]
+            ]=data[self.which_set+'_mono_features'][0][0]
 
         elif self.which_set == 'test':
             [self.uttidx,
@@ -63,7 +63,7 @@ class TIMIT(DenseDesignMatrix):
             self.uttname,
             self.uttlength,
             self.feats,
-            ]=data[self.which_set+'_features'][0][0]
+            ]=data[self.which_set+'_mono_features'][0][0]
 
     def feature_design(self):
         tempX = self.feats
