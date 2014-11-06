@@ -1,9 +1,9 @@
 import os, scipy.io
 import numpy as np
 from os import listdir
-import cPickle as pkl
 from os.path import isfile, join, splitext, basename
-import re
+from DNNSMM.utll import human_sort
+import cPickle as pkl
 import ipdb
 
 smbr = True 
@@ -15,18 +15,6 @@ savepath = '/dataset/kaldi/data-fmllr-tri3'
 matpath = '/dataset/kaldi/data-fmllr-tri3-edited'
 
 
-# Utils
-def atoi(text):
-    return int(text) if text.isdigit() else text
-
-# Utils
-def natural_keys(text):
-    '''
-    alist.sort(key=natural_keys) sorts in human order
-    http://nedbatchelder.com/blog/200712/human_sorting.html
-    (See Toothy's implementation in the comments)
-    '''
-    return [ atoi(c) for c in re.split('(\d+)', text) ]
 
 # Save .ark file to plain text file
 def saveark(datadir):
