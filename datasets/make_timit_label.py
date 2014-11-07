@@ -9,77 +9,79 @@ savedir = '/dataset/kaldi/data-fmllr-tri3-edited'
 timitdir = '/dataset/timit/TIMIT'
 
 def make_timit_label(which_set, winsize, shift):
-    datadir = join(timitdir,which_set)
-    subdirs = [x[0] for x in os.walk(datadir) if x[1]==[]]
+    # Obtain alignment information from KALDI 
     alilist, phnlen, phnids = aliparser(which_set)
 
+    # Obtain directory informations from TIMIT
+    timitpath = join(timitdir,which_set)
+    subdirs = [x[0] for x in os.walk(timitpath) if x[1]==[]]
     uttlist=[]
     for sub in subdirs:
         uttlist.extend([join(sub,x) for x in listdir(sub) if x.endswith('PHN')])
     
-   # wid = open(join(datadir,'ali_mono_true'+which_set),'w')
-    wid = open('lengthinfo','w')
+    # save to wid
+    wid = open(join(datadir,'ali_mono_true_'+which_set),'w')
 
-    for ali in [alilist[8]]:
-    #for ali in alilist:
+    for ali in alilist:
         spk, utt = ali.split('_') 
-        uttpath =filter(lambda x:spk in x and utt in x, uttlist)[0]
+        uttpath =filter(lambda x:spk in x and utt+'.PHN' in x, uttlist)[0]
         with open(uttpath,'r') as fid:
             phns = fid.read().split('\n')
+        
+        # mapping from phns to phnlst
         phnlst60 = make_phonelist(phns,winsize,shift)
         phnlst48 = phone60to48(phnlst60)
         phnlst = phone48toidx(phnlst48,'pre')
-
+        
+        # Compare to the length of waveform, refine the length of labels
         ind = alilist.index(ali)
+        wav_nframe = int(nframe_waveform(uttpath))
+        numpad = int(wav_nframe - len(phnlst))
         
-        numpad =  phnlen[ind] -len(phnlst) 
-        #phnlst.append(phnlst[-1]*numpad)
-        
-        length_ori = phnlen[ind]
-        length = len(phnlst)
-        ipdb.set_trace()
-        print ali, length_ori, length, length_ori-length
-        wid.write(' '.join((ali,str(length_ori),str(length),str(numpad)))+'\n')
-
-        #print [[x,y] for x,y in zip(phnids[ind], phnlst)]
-
+        if numpad >0:
+            phnlst.extend([phnlst[-1]]*numpad)
+        elif numpad < 0:
+            phnlst = phnlst[:numpad]
+      
+        # Write to wid
         phnlst_ = (str(x) for x in phnlst)
         phnstr = ali + ' ' + ' '.join(phnlst_) + '\n'
-        #wid.write(phnstr)
+        wid.write(phnstr)
     wid.close()
 
 def make_phonelist(phns,winsize,shift,type='cut'):
     phnlst= []
     remaining = 0
-    for phn in phns:
+    for ind, phn in enumerate(phns):
         if phn=='':
              continue
         phn = phn.split(' ')
+        
+        if ind==0 and not int(phn[0])==0:
+            phn[0]=0
+             
         rawphnlength = int(phn[1])-int(phn[0])
         phnlength = rawphnlength + remaining 
         numphn = nframes(phnlength, winsize, shift, type='round')
         truelength = nframestolength(numphn,winsize,shift)
         remaining = phnlength - truelength + (winsize - shift)
         phnlst.extend([phn[2]]*numphn)
-    
-    if nframestolength(len(phnlst),winsize,shift)>phns[-2].split(' ')[1]\
-        and type == 'cut':
-        phnlst = phnlst[:-1]
-    
 
+    # If the total number of frames is longer than size, refine it.
+    numphndiff = int(len(phnlst)-nframes(int(phns[-2].split(' ')[1])))
+    if type=='cut' and numphndiff>0:
+        phnlst=phnlst[:-numphndiff]
+    
     return phnlst
 
-def nframestolength(nframes, winsize, shift):
+def nframestolength(nframes, winsize=400, shift=160):
     return (nframes-1)*shift+winsize
 
-def nframes(tot_len, winsize, shift, type='floor'):
+def nframes(tot_len, winsize=400, shift=160, type='floor'):
     if type == 'floor':
         return 1+np.floor((tot_len-winsize)/shift)
     elif type == 'round':
-        n_in = 1+np.floor((tot_len-winsize)/shift)
-        l_res = tot_len-nframestolength(n_in,winsize,shift)
-        n_res = max(0,np.floor((2*l_res-winsize)/(2*shift)))
-        return n_in+n_res
+        return np.floor((2*tot_len-winsize)/(2*shift))+1
     else: 
         return 1+np.ceil((tot_len-winsize)/shift)
 
@@ -157,8 +159,13 @@ def aliparser(which_set,nmodel='mono'):
         rid.close()
     return uttname, phnlen, phnids
 
+def nframe_waveform(uttpath):
+    with open(uttpath[:-4]+'.TXT') as f:
+        line = f.readline()
+    return nframes(int(line.split(' ')[1]))
+
 if __name__=='__main__':
-    which_set = 'TRAIN'
+    which_set = 'TEST'
     winsize = 400
     shift = 160
 
