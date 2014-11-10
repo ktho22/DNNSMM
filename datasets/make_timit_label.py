@@ -9,11 +9,16 @@ savedir = '/dataset/kaldi/data-fmllr-tri3-edited'
 timitdir = '/dataset/timit/TIMIT'
 
 def make_timit_label(which_set, winsize, shift):
-    # Obtain alignment information from KALDI 
+    assert which_set in ['TRAIN','DEV','TEST']
+
+    # Obtain alignment information from KALDI
     alilist, phnlen, phnids = aliparser(which_set)
 
+    if which_set in ['TEST','DEV']:
+         which_set_timit = 'TEST'
+        
     # Obtain directory informations from TIMIT
-    timitpath = join(timitdir,which_set)
+    timitpath = join(timitdir,which_set_timit)
     subdirs = [x[0] for x in os.walk(timitpath) if x[1]==[]]
     uttlist=[]
     for sub in subdirs:
@@ -27,22 +32,24 @@ def make_timit_label(which_set, winsize, shift):
         uttpath =filter(lambda x:spk in x and utt+'.PHN' in x, uttlist)[0]
         with open(uttpath,'r') as fid:
             phns = fid.read().split('\n')
-        
+
         # mapping from phns to phnlst
         phnlst60 = make_phonelist(phns,winsize,shift)
         phnlst48 = phone60to48(phnlst60)
-        phnlst = phone48toidx(phnlst48,'pre')
+        phnlst = phone48toidx(phnlst48,'amb')
         
         # Compare to the length of waveform, refine the length of labels
         ind = alilist.index(ali)
         wav_nframe = int(nframe_waveform(uttpath))
         numpad = int(wav_nframe - len(phnlst))
-        
+    
         if numpad >0:
             phnlst.extend([phnlst[-1]]*numpad)
+            print '%15s, length diff is %2d' %(ali, numpad)
         elif numpad < 0:
             phnlst = phnlst[:numpad]
-      
+            print '%15s, length diff is %2d' %(ali, numpad)
+
         # Write to wid
         phnlst_ = (str(x) for x in phnlst)
         phnstr = ali + ' ' + ' '.join(phnlst_) + '\n'
@@ -165,7 +172,7 @@ def nframe_waveform(uttpath):
     return nframes(int(line.split(' ')[1]))
 
 if __name__=='__main__':
-    which_set = 'TEST'
+    which_set = 'DEV'
     winsize = 400
     shift = 160
 
