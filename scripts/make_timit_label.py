@@ -2,20 +2,23 @@ import scipy.io, ipdb, os
 from DNNSMM.util.human_sort import atoi, natural_keys
 from os import listdir
 from os.path import isfile, isdir, join, splitext, basename
+from itertools import groupby
 import numpy as np
 
 datadir = '/dataset/kaldi/data-fmllr-tri3'
 savedir = '/dataset/kaldi/data-fmllr-tri3-edited'
 timitdir = '/dataset/timit/TIMIT'
 
-def make_timit_label(which_set, winsize, shift):
+def make_timit_label(which_set, winsize, shift, fmt = 'nosave'):
     assert which_set in ['TRAIN','DEV','TEST']
 
     # Obtain alignment information from KALDI
     alilist, phnlen, phnids = aliparser(which_set)
 
-    if which_set in ['TEST','DEV']:
+    if which_set in ['DEV']:
          which_set_timit = 'TEST'
+    else:
+         which_set_timit = which_set
         
     # Obtain directory informations from TIMIT
     timitpath = join(timitdir,which_set_timit)
@@ -25,10 +28,21 @@ def make_timit_label(which_set, winsize, shift):
         uttlist.extend([join(sub,x) for x in listdir(sub) if x.endswith('PHN')])
     
     # save to wid
-    wid = open(join(datadir,'ali_mono_true_'+which_set),'w')
+    savename = join(datadir,'ali_mono_true_'+which_set)
+    if fmt == 'pln':
+        wid = open(savename,'w')
+    elif fmt == 'mat':    
+        labels = [] 
+        states = []
+    elif fmt == 'nosave':
+         pass
+    else:
+         raise ValueError('format should be "pln" or "mat"')
 
-    for ali in alilist:
-        spk, utt = ali.split('_') 
+    alisum = 0
+    for ali in ['FADG0_SI1909']:
+    #for ali in alilist:
+        spk, utt = ali.split('_')
         uttpath =filter(lambda x:spk in x and utt+'.PHN' in x, uttlist)[0]
         with open(uttpath,'r') as fid:
             phns = fid.read().split('\n')
@@ -37,24 +51,42 @@ def make_timit_label(which_set, winsize, shift):
         phnlst60 = make_phonelist(phns,winsize,shift)
         phnlst48 = phone60to48(phnlst60)
         phnlst = phone48toidx(phnlst48,'amb')
-        
+
         # Compare to the length of waveform, refine the length of labels
         ind = alilist.index(ali)
-        wav_nframe = int(nframe_waveform(uttpath))
-        numpad = int(wav_nframe - len(phnlst))
+        numpad = int(phnlen[ind] - len(phnlst))
     
+        if not numpad==0:
+            print '%15s, kaldi length %3d - timit length %3d = %3d' \
+                %(ali, phnlen[ind], len(phnlst), numpad)
         if numpad >0:
             phnlst.extend([phnlst[-1]]*numpad)
-            print '%15s, length diff is %2d' %(ali, numpad)
         elif numpad < 0:
             phnlst = phnlst[:numpad]
-            print '%15s, length diff is %2d' %(ali, numpad)
 
+        for x,y in zip(phnids[ind],phnlst):
+            print x,y
+        
         # Write to wid
         phnlst_ = (str(x) for x in phnlst)
         phnstr = ali + ' ' + ' '.join(phnlst_) + '\n'
-        wid.write(phnstr)
-    wid.close()
+        if fmt == 'pln':
+            wid.write(phnstr)
+        elif fmt == 'mat':
+            labels.append(phnlst)
+            # Assign state
+            statelst = state_label(phnlst)
+            states.append(statelst)
+        alisum += len(phnlst)
+
+    if fmt == 'pln':
+        wid.close()
+    elif fmt == 'mat':
+        assert len(labels) == len(states)
+        ipdb.set_trace()
+        scipy.io.savemat(savename, \
+            {which_set+'_labels':labels,which_set+'_states':states,'utt':alilist}, appendmat=True)
+    print '%s is done, total length is %d' % (which_set, alisum)
 
 def make_phonelist(phns,winsize,shift,type='cut'):
     phnlst= []
@@ -74,23 +106,12 @@ def make_phonelist(phns,winsize,shift,type='cut'):
         remaining = phnlength - truelength + (winsize - shift)
         phnlst.extend([phn[2]]*numphn)
 
-    # If the total number of frames is longer than size, refine it.
+    # If the total number of frames is longer than kaldi, refine it.
     numphndiff = int(len(phnlst)-nframes(int(phns[-2].split(' ')[1])))
     if type=='cut' and numphndiff>0:
         phnlst=phnlst[:-numphndiff]
     
     return phnlst
-
-def nframestolength(nframes, winsize=400, shift=160):
-    return (nframes-1)*shift+winsize
-
-def nframes(tot_len, winsize=400, shift=160, type='floor'):
-    if type == 'floor':
-        return 1+np.floor((tot_len-winsize)/shift)
-    elif type == 'round':
-        return np.floor((2*tot_len-winsize)/(2*shift))+1
-    else: 
-        return 1+np.ceil((tot_len-winsize)/shift)
 
 def phone60to48(phone60):
     mapfile = '/home/thkim/libs/kaldi/egs/timit/s5/conf/phones.60-48-39.map'
@@ -128,7 +149,7 @@ def phone48toidx(phone48,q='amb'):
     phoneIds=[]
     for ind, phn in enumerate(phone48):
         if phn=='q' and q=='amb':
-            newphn = 49 
+            newphn = 1
         elif phn=='q' and q=='pre':
             newphn = mapper(phmap,prephone)
         elif phn=='q' and q=='post':
@@ -136,12 +157,23 @@ def phone48toidx(phone48,q='amb'):
         else:
             newphn = mapper(phmap,phn)
             prephone = phn
-        phoneIds.append(newphn)
+        phoneIds.append(int(newphn))
     return phoneIds
 
-def mapper(map, item, c1=0, c2=1):
-    idx = np.where(map[c1,:]==item)
-    return map[c2,idx[0]][0]
+def state_label(phnlst):
+    simple_phnlst = [(c,len(list(cgen))) for c,cgen in groupby(phnlst)]
+    y=[]
+    for SegID, tl in simple_phnlst:
+        tl=float(tl)
+        (fID,mID,eID) = (SegID*3-2, SegID*3-1, SegID*3)
+        ( fl, ml, el) = (np.round(tl/3), np.ceil(tl/3), np.floor(tl/3))
+
+        y.extend([fID]*fl)
+        y.extend([mID]*ml)
+        y.extend([eID]*el)
+
+    y = np.asarray(y) - 1 # label 1:144 goes to 0:143
+    return y
 
 def aliparser(which_set,nmodel='mono'):
     keyword = 'ali_' + nmodel
@@ -166,14 +198,34 @@ def aliparser(which_set,nmodel='mono'):
         rid.close()
     return uttname, phnlen, phnids
 
+def mapper(map, item, c1=0, c2=1):
+    idx = np.where(map[c1,:]==item)
+    return map[c2,idx[0]][0]
+
+def nframestolength(nframes, winsize=400, shift=160):
+    return (nframes-1)*shift+winsize
+
+def nframes(tot_len, winsize=400, shift=160, type='floor'):
+    if type == 'floor':
+        return 1+np.floor((tot_len-winsize)/shift)
+    elif type == 'round':
+        return np.floor((2*tot_len-winsize)/(2*shift))+1
+    else: 
+        return 1+np.ceil((tot_len-winsize)/shift)
+
 def nframe_waveform(uttpath):
     with open(uttpath[:-4]+'.TXT') as f:
         line = f.readline()
     return nframes(int(line.split(' ')[1]))
 
+def pdfid_to_state(pdfid):
+    return pdfid%3
+
 if __name__=='__main__':
-    which_set = 'DEV'
+    #which_set = 'DEV'
     winsize = 400
     shift = 160
-
-    make_timit_label(which_set, winsize, shift)
+    fmt = 'mat' # 'mat' for .mat formatting, 'pln' for plain txt
+    [make_timit_label(x, winsize, shift, 'nosave') for x in ['DEV','TRAIN','TEST']]
+    #[make_timit_label(which_set, winsize, shift, fmt) \
+    #    for which_set in ['DEV','TRAIN','TEST']]
