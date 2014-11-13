@@ -1,3 +1,12 @@
+'''
+This function is for making labels of original timit database
+
+How to use:
+    
+
+'''
+
+
 import scipy.io, ipdb, os
 from DNNSMM.util.human_sort import atoi, natural_keys
 from os import listdir
@@ -9,7 +18,7 @@ datadir = '/dataset/kaldi/data-fmllr-tri3'
 savedir = '/dataset/kaldi/data-fmllr-tri3-edited'
 timitdir = '/dataset/timit/TIMIT'
 
-def make_timit_label(which_set, winsize, shift, fmt = 'nosave'):
+def make_timit_label(which_set, winsize, shift, savetype='phn',fmt = 'nosave'):
     assert which_set in ['TRAIN','DEV','TEST']
 
     # Obtain alignment information from KALDI
@@ -28,7 +37,7 @@ def make_timit_label(which_set, winsize, shift, fmt = 'nosave'):
         uttlist.extend([join(sub,x) for x in listdir(sub) if x.endswith('PHN')])
     
     # save to wid
-    savename = join(datadir,'ali_mono_true_'+which_set)
+    savename = join(datadir,'ali_mono_true_'+which_set+'.ark')
     if fmt == 'pln':
         wid = open(savename,'w')
     elif fmt == 'mat':    
@@ -40,8 +49,8 @@ def make_timit_label(which_set, winsize, shift, fmt = 'nosave'):
          raise ValueError('format should be "pln" or "mat"')
 
     alisum = 0
-    for ali in ['FADG0_SI1909']:
-    #for ali in alilist:
+    #for ali in ['FADG0_SI1909']:
+    for ali in alilist:
         spk, utt = ali.split('_')
         uttpath =filter(lambda x:spk in x and utt+'.PHN' in x, uttlist)[0]
         with open(uttpath,'r') as fid:
@@ -63,19 +72,19 @@ def make_timit_label(which_set, winsize, shift, fmt = 'nosave'):
             phnlst.extend([phnlst[-1]]*numpad)
         elif numpad < 0:
             phnlst = phnlst[:numpad]
-
-        for x,y in zip(phnids[ind],phnlst):
-            print x,y
+        
+        # Change it into pdf id
+        statelst = state_label(phnlst)
         
         # Write to wid
-        phnlst_ = (str(x) for x in phnlst)
+        wlist = {'pdf':statelst,'phn':phnlst}[savetype]
+        phnlst_ = (str(x) for x in wlist)
         phnstr = ali + ' ' + ' '.join(phnlst_) + '\n'
         if fmt == 'pln':
             wid.write(phnstr)
         elif fmt == 'mat':
             labels.append(phnlst)
             # Assign state
-            statelst = state_label(phnlst)
             states.append(statelst)
         alisum += len(phnlst)
 
@@ -83,9 +92,10 @@ def make_timit_label(which_set, winsize, shift, fmt = 'nosave'):
         wid.close()
     elif fmt == 'mat':
         assert len(labels) == len(states)
-        ipdb.set_trace()
         scipy.io.savemat(savename, \
-            {which_set+'_labels':labels,which_set+'_states':states,'utt':alilist}, appendmat=True)
+            {which_set+'_labels':labels,
+             which_set+'_states':states,
+             'utt':alilist}, appendmat=True)
     print '%s is done, total length is %d' % (which_set, alisum)
 
 def make_phonelist(phns,winsize,shift,type='cut'):
@@ -225,7 +235,8 @@ if __name__=='__main__':
     #which_set = 'DEV'
     winsize = 400
     shift = 160
+    savetype = 'pdf' # 'phn' for phone id, 'pdf' for pdf-id
     fmt = 'mat' # 'mat' for .mat formatting, 'pln' for plain txt
-    [make_timit_label(x, winsize, shift, 'nosave') for x in ['DEV','TRAIN','TEST']]
-    #[make_timit_label(which_set, winsize, shift, fmt) \
-    #    for which_set in ['DEV','TRAIN','TEST']]
+    #[make_timit_label(x, winsize, shift, 'nosave') for x in ['DEV','TRAIN','TEST']]
+    [make_timit_label(which_set, winsize, shift, savetype, fmt) \
+        for which_set in ['DEV','TRAIN','TEST']]

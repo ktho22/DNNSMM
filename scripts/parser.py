@@ -2,7 +2,7 @@ import os, scipy.io
 import numpy as np
 from os import listdir
 from os.path import isfile, join, splitext, basename
-from DNNSMM.utll import human_sort
+from DNNSMM.util.human_sort import *
 import cPickle as pkl
 import ipdb
 
@@ -13,7 +13,8 @@ alidir = '/home/thkim/libs/kaldi/egs/timit/s5/exp/tri3_ali'
 arkdir = '/home/thkim/libs/kaldi/egs/timit/s5/data-fmllr-tri3'
 savepath = '/dataset/kaldi/data-fmllr-tri3' 
 matpath = '/dataset/kaldi/data-fmllr-tri3-edited'
-
+mdlpath = '/home/thkim/libs/kaldi/egs/timit/s5/exp/dnn4_pretrain-dbn_dnn_6_timit_align_mono' 
+#mdlpath = '/home/thkim/libs/kaldi/egs/timit/s5/exp/dnn4_pretrain-dbn_dnn_6_timit_align_tri' 
 
 
 # Save .ark file to plain text file
@@ -31,17 +32,10 @@ def saveark(datadir):
         savename=join(savepath,basename(splitext(arkname)[0]))
         os.system('copy-feats ark:%s ark,t:%s'%(arkname,savename))    
 
-def fprop(datadir):
-    '''
-    if smbr==True:
-        feature_transform = '--feature-transform=/home/thkim/libs/kaldi/egs/timit/s5/exp/dnn4_pretrain-dbn_dnn_smbr_'+str(nlayer)+'/final.feature_transform'
-        mdlname = '/home/thkim/libs/kaldi/egs/timit/s5/exp/dnn4_pretrain-dbn_dnn_smbr_'+str(nlayer)+'/final.nnet'
-    else:
-        feature_transform = '--feature-transform=/home/thkim/libs/kaldi/egs/timit/s5/exp/dnn4_pretrain-dbn_dnn_'+str(nlayer)+'/final.feature_transform'
-        mdlname = '/home/thkim/libs/kaldi/egs/timit/s5/exp/dnn4_pretrain-dbn_dnn_'+str(nlayer)+'/final.nnet'
-    '''
-    feature_transform = '--feature-transform=/home/thkim/libs/kaldi/egs/timit/s5/exp/dnn4_pretrain-dbn_dnn_smbr_6_512/final.feature_transform'
-    mdlname = '/home/thkim/libs/kaldi/egs/timit/s5/exp/dnn4_pretrain-dbn_dnn_smbr_6_512/final.nnet'
+def fprop(which_set):
+    datadir = join(arkdir, which_set)
+    feature_transform = '--feature-transform='+mdlpath+'/final.feature_transform'
+    mdlname = mdlpath+'/final.nnet'
     
     datadir = join(datadir,'data')
     postfix = '--use-gpu=yes'
@@ -50,15 +44,11 @@ def fprop(datadir):
     arkfiles = [ f for f in listdir(datadir) \
         if isfile(join(datadir,f)) and f.endswith('.ark') ]
     arkfiles.sort(key=natural_keys)
-    
+
     # Save it into plain text file
-    for fname in arkfiles:
+    for ind,fname in enumerate(arkfiles):
         arkname =join(datadir,fname)
-        savename=join(savepath,basename(splitext(arkname)[0]))
-        if smbr==True:
-            savename=splitext(savename)[0]+'_fprop_l'+str(nlayer)+'_'+str(nhids)+'_smbr'+splitext(savename)[1]
-        else:
-            savename=splitext(savename)[0]+'_fprop_l'+str(nlayer)+'_'+str(nhids)+splitext(savename)[1]
+        savename=join(savepath,mdlpath.split('/')[-1]+'_'+which_set+'.'+str(ind))
         os.system('nnet-forward %s %s %s ark:%s ark,t:%s'\
             %(feature_transform,postfix,mdlname, arkname,savename))    
 
@@ -119,27 +109,10 @@ def aliparser(which_set,nmodel):
         'uttidx':uttidx}
     scipy.io.savemat(join(matpath,varname),{varname:tempvar},appendmat=True)
 
-def arkparser(which_set,nmodel):
+def arkparser(which_set):
     datadir = savepath
-    arkfiles = [ f for f in listdir(datadir) \
-        if isfile(join(datadir,f)) and f.startswith('feats') \
-        and which_set in f and 'fprop_l'+str(nlayer)+'_'+str(nhids) in f]
-    '''
-    # Obtain file name
-    if nmodel=='tri':
-        arkfiles = [ f for f in listdir(datadir) \
-            if isfile(join(datadir,f)) and f.startswith('feats') \
-            and which_set in f and 'fprop_l'+str(nlayer) in f]
-    else:
-        arkfiles = [ f for f in listdir(datadir) \
-            if isfile(join(datadir,f)) and f.startswith('feats') \
-            and which_set in f and not 'fprop' in f]
-    '''
-    if smbr==True:
-        arkfiles = [ f for f in arkfiles if 'smbr' in  f]
-    else:
-        arkfiles = [ f for f in arkfiles if not 'smbr' in  f]
-    
+    key = mdlpath.split('/')[-1]
+    arkfiles = [ f for f in listdir(datadir) if key in f and which_set in f]
     arkfiles.sort(key=natural_keys)
 
     uttname = []
@@ -171,24 +144,25 @@ def arkparser(which_set,nmodel):
     uttstidx = [0]
     uttstidx.extend(uttendidx[:-1]+1)
     uttidx = np.asarray([uttstidx,uttendidx]).T
-    
-    varname = which_set+'_'+nmodel+'_features_l'+str(nlayer)+ '_'+str(nhids)
-    
-    if smbr == True:
-        varname +='_smbr'
+   
+    varname = key.replace('-','_')+'_'+which_set 
     
     tempvar = {'feats':feats,
         'uttname':uttname,
         'uttlength':uttlength,
         'uttidx':uttidx}
+    '''
+    alignpath = join(matpath,which_set+'_'+nmodel+'_alignment.mat')
+    if os.path.exists(alignpath):
+        label = alignment(tempvar,which_set,nmodel)
+        tempvar['phoneIds']=label
+    '''
 
-    label = alignment(tempvar,which_set,nmodel)
-    tempvar['phoneIds']=label
     scipy.io.savemat(join(matpath,varname),{varname:tempvar},appendmat=True)
     del feats, uttname, uttlength
 
 def alignment(var,which_set,nmodel):
-    alignment=scipy.io.loadmat(join(matpath,which_set+'_'+nmodel+'_alignment.mat'))
+    alignment=scipy.io.loadmat(alignpath)
     [uttidx_ali, phoneids, uttname_ali, uttlength_ali]= \
         alignment[which_set+'_'+nmodel+'_alignment'][0][0] # phoneids
     
@@ -206,7 +180,6 @@ if __name__=='__main__':
     # from ark to files
     #map(saveark,[join(arkdir,'dev'),join(arkdir,'train'),join(arkdir,'test')])
     #map(fprop,[join(arkdir,'dev'),join(arkdir,'test'),join(arkdir,'train')])
-    #map(fprop,[join(arkdir,'dev'),join(arkdir,'test')])
 
     #[saveali(x,'tri') for x in ['dev','test','train']]
     #[saveali(x,'mono') for x in ['dev','test','train']]
@@ -215,8 +188,6 @@ if __name__=='__main__':
     #[aliparser(x,'tri') for x in ['dev','test','train']]
     #[aliparser(x,'mono') for x in ['dev','test','train']]
     
-    # fprop features - tri
-    [arkparser(x,'tri') for x in ['dev','test']]
-    #[arkparser(x,'mono') for x in ['dev','test']]
-    #[arkparser(x,'mono') for x in ['train']]
+    map(fprop,['dev','test'])
+    [arkparser(x) for x in ['dev','test']]
 
