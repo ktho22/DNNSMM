@@ -1,8 +1,10 @@
 '''
-This function is for making labels of original timit database
+This function is for making labels from original timit database
 
 How to use:
-    
+   1. You need to specify winsize and shift for STFT
+   2. Make sure that datadir, savedir, timitdir is written properly
+   3. Specify savetype for pdf-id (<144) or phone-id (<48) and fmt (plain or mat)
 
 '''
 
@@ -37,9 +39,9 @@ def make_timit_label(which_set, winsize, shift, savetype='phn',fmt = 'nosave'):
         uttlist.extend([join(sub,x) for x in listdir(sub) if x.endswith('PHN')])
     
     # save to wid
-    savename = join(datadir,'ali_mono_true_'+which_set+'.ark')
+    savename = join(savedir,'ali_mono_true_'+savetype+'_'+which_set)
     if fmt == 'pln':
-        wid = open(savename,'w')
+        wid = open(savename+'.ark','w')
     elif fmt == 'mat':    
         labels = [] 
         states = []
@@ -97,6 +99,7 @@ def make_timit_label(which_set, winsize, shift, savetype='phn',fmt = 'nosave'):
              which_set+'_states':states,
              'utt':alilist}, appendmat=True)
     print '%s is done, total length is %d' % (which_set, alisum)
+    print 'Saved at %s as %s' % (savename,fmt)
 
 def make_phonelist(phns,winsize,shift,type='cut'):
     phnlst= []
@@ -235,7 +238,7 @@ if __name__=='__main__':
     #which_set = 'DEV'
     winsize = 400
     shift = 160
-    savetype = 'pdf' # 'phn' for phone id, 'pdf' for pdf-id
+    savetype = 'phn' # 'phn' for phone id, 'pdf' for pdf-id
     fmt = 'mat' # 'mat' for .mat formatting, 'pln' for plain txt
     #[make_timit_label(x, winsize, shift, 'nosave') for x in ['DEV','TRAIN','TEST']]
     [make_timit_label(which_set, winsize, shift, savetype, fmt) \
