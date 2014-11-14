@@ -14,7 +14,7 @@ def tree_pdf(which_set,nmodel='tri',fmt='pln'):
          treemap = 'treemap_mono'
     tree = np.asarray(treemdl[treemap])
     del treemdl
-
+    
     # Phone sequence is loaded
     # labels : range(0,48), states : range(0,3)
     filepath = join(datapath,'ali_mono_true_phn_'+which_set+'.mat')
@@ -23,7 +23,7 @@ def tree_pdf(which_set,nmodel='tri',fmt='pln'):
     labels = [np.asarray(x[0]) for x in seq[which_set+'_labels'][0]]
     states = [np.asarray(x[0]) for x in seq[which_set+'_states'][0]]
     uttlist= [str(x).strip() for x in seq['utt']]
-    
+
     # query_seq = [num of uttlist, (state, phone at t-1, phone at t, phone at t+1)]
     query_seq = [make_tri_labels(x,y,nmodel) for x,y in zip(labels,states)]
     
@@ -32,9 +32,7 @@ def tree_pdf(which_set,nmodel='tri',fmt='pln'):
     
     # Iterate in query_seq so we can find proper triphone index corresponding to query
     for ind in range(uttlength):
-        print 'Working on ', uttlist[ind]
-        lab = labels[ind]
-        sts = states[ind]
+        print '%4d, Working on %s' %(ind, uttlist[ind])
         pdfids.append(query_to_pdf(query_seq[ind],tree))
 
     # Save the result
@@ -61,9 +59,9 @@ def make_tri_labels(seq,states,nmodel):
     del simple_seq
 
     # Given phnlst, make (phn[t-1],phn[t],phn[t+1])
-    phnlst0 = np.concatenate(([1],[1],phnlst))
-    phnlst1 = np.concatenate(([1],phnlst,[1])) 
-    phnlst2 = np.concatenate((phnlst,[1],[1]))
+    phnlst0 = np.concatenate(([0],[0],phnlst))
+    phnlst1 = np.concatenate(([0],phnlst,[0])) 
+    phnlst2 = np.concatenate((phnlst,[0],[0]))
     tri_phnlst = np.vstack((phnlst0.T,phnlst1.T,phnlst2.T)).T[1:-1]
     ind = np.where(tri_phnlst[:,1]==1)
     tri_phnlst[ind,0]=0
@@ -92,22 +90,23 @@ def query_to_pdf(query_seq,tree):
     for qidx, query in enumerate(query_seq_tup):
         if query in tree_tup_set:
             ind = tree_dict[query]
-            #print query, ind
+            #print query, ind, tree_ind[ind]
         else:
-            print query, 'does not exists'
+            ipdb.set_trace()
             if query_seq[qidx][0]==0:
-                ind = subset(tree,query,[3])
-                if not ind:
-                    ind = subset(tree,query,[1,3])
+                ind_list = subset(tree,query,[3])
+                if not ind_list:
+                    ind_list = subset(tree,query,[1,3])
             elif query_seq[qidx][0]==1:
-                ind = subset(tree,query,[1])
-                if not ind:
-                    ind = subset(tree,query,[1,3])
+                ind_list = subset(tree,query,[1])
+                if not ind_list:
+                    ind_list = subset(tree,query,[1,3])
             else:
-                ind = subset(tree,query,[1])
-                if not ind:
-                    ind = subset(tree,query,[1,3])
-            ind = min(ind)
+                ind_list = subset(tree,query,[1])
+                if not ind_list:
+                    ind_list = subset(tree,query,[1,3])
+            ind = most_common(ind_list)
+            print query, 'does not exists, substitutes to',  ind
 
         pdfid.extend([ind])
         #pdfid.extend([tree_ind[ind]])
@@ -120,11 +119,14 @@ def subset(whole, part, ignore):
             continue
         l = np.where(whole[:,i+1]==part[i])
         whole_set=whole_set.intersection(l[0])
-    output = [x for x in iter(whole_set)]
+    output = [whole[x][0] for x in iter(whole_set)]
     return output
 
+def most_common(lst):
+         return max(set(lst), key=lst.count)
+
 if __name__=='__main__':
-    fmt = 'mat'  
-    [tree_pdf(x,'tri',fmt) for x in ['TRAIN','DEV','TEST']]
+    fmt = 'nosave'  
+    [tree_pdf(x,'tri',fmt) for x in ['TRAIN']]
     #[tree_pdf(x,'tri',fmt) for x in ['DEV']]
     #[tree_pdf(x,'tri') for x in ['DEV','TRAIN','TEST']]
