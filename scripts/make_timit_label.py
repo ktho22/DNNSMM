@@ -8,7 +8,6 @@ How to use:
 
 '''
 
-
 import scipy.io, ipdb, os
 from DNNSMM.util.human_sort import atoi, natural_keys
 from os import listdir
@@ -20,7 +19,13 @@ datadir = '/dataset/kaldi/data-fmllr-tri3'
 savedir = '/dataset/kaldi/data-fmllr-tri3-edited'
 timitdir = '/dataset/timit/TIMIT'
 
-def make_timit_label(which_set, winsize, shift, savetype='phn',fmt = 'nosave'):
+def make_timit_label(which_set, 
+                    winsize, 
+                    shift, 
+                    savetype='phn',
+                    qtype='amb',
+                    fmt = 'nosave',
+                    postfix=''):
     assert which_set in ['TRAIN','DEV','TEST']
 
     # Obtain alignment information from KALDI
@@ -38,10 +43,15 @@ def make_timit_label(which_set, winsize, shift, savetype='phn',fmt = 'nosave'):
     for sub in subdirs:
         uttlist.extend([join(sub,x) for x in listdir(sub) if x.endswith('PHN')])
     
-    # save to wid
-    savename = join(savedir,'ali_mono_true_'+savetype+'_'+which_set)
+    if postfix == '':
+        pass
+    else:
+        postfix = '_'+postfix
+
+    savename = join(savedir,'ali_mono_true_'+savetype+'_'+qtype+'_'+which_set+postfix)
     if fmt == 'pln':
         wid = open(savename+'.ark','w')
+        wid_prior = open(join(savedir,'pdf_count_'+which_set),'w')
     elif fmt == 'mat':    
         labels = [] 
         states = []
@@ -50,6 +60,7 @@ def make_timit_label(which_set, winsize, shift, savetype='phn',fmt = 'nosave'):
     else:
          raise ValueError('format should be "pln" or "mat"')
 
+    pdfcount = np.zeros((200))
     alisum = 0
     #for ali in ['FADG0_SI1909']:
     for ali in alilist:
@@ -61,7 +72,8 @@ def make_timit_label(which_set, winsize, shift, savetype='phn',fmt = 'nosave'):
         # mapping from phns to phnlst
         phnlst60 = make_phonelist(phns,winsize,shift)
         phnlst48 = phone60to48(phnlst60)
-        phnlst = phone48toidx(phnlst48,'amb')
+        #phnlst = phone48toidx(phnlst48,qtype)
+        phnlst = phone61toidx(phnlst60,qtype)
 
         # Compare to the length of waveform, refine the length of labels
         ind = alilist.index(ali)
@@ -78,6 +90,10 @@ def make_timit_label(which_set, winsize, shift, savetype='phn',fmt = 'nosave'):
         # Change it into pdf id
         statelst = state_label(phnlst)
         
+        # Count pdf id
+        for i in statelst:
+            pdfcount[i] += 1
+
         # Write to wid
         wlist = {'pdf':statelst,'phn':phnlst}[savetype]
         phnlst_ = (str(x) for x in wlist)
@@ -92,6 +108,11 @@ def make_timit_label(which_set, winsize, shift, savetype='phn',fmt = 'nosave'):
 
     if fmt == 'pln':
         wid.close()
+
+        pdfcount_ = (str(int(x)) for x in pdfcount)
+        pdfcountstr = '[' + ' '.join(pdfcount_) +']'
+        wid_prior.write(pdfcountstr)
+        wid_prior.close()
     elif fmt == 'mat':
         assert len(labels) == len(states)
         scipy.io.savemat(savename, \
@@ -147,6 +168,25 @@ def phone60to48(phone60):
         phone48.append(newphn)
     return phone48
 
+def phone61toidx(phone61,q='amb'):
+    mapfile = 'phones61.txt'
+    with open(mapfile,'r') as fid:
+        prephmap = fid.read().split('\n')
+    phmap = []
+    for item in prephmap:
+        if item == '':
+             continue
+        phmap.append(item.split(' '))
+    phmap = np.asarray(phmap).T
+   
+    prephone=''
+    phoneIds=[]
+    for ind, phn in enumerate(phone61):
+        newphn = mapper(phmap,phn)
+        prephone = phn
+        phoneIds.append(int(newphn))
+    return phoneIds
+
 def phone48toidx(phone48,q='amb'):
     mapfile = '/home/thkim/libs/kaldi/egs/timit/s5/data/lang/phones.txt'
     with open(mapfile,'r') as fid:
@@ -179,8 +219,15 @@ def state_label(phnlst):
     for SegID, tl in simple_phnlst:
         tl=float(tl)
         (fID,mID,eID) = (SegID*3-2, SegID*3-1, SegID*3)
-        ( fl, ml, el) = (np.round(tl/3), np.ceil(tl/3), np.floor(tl/3))
-
+        (fl, ml, el) = (np.round(tl/3), np.ceil(tl/3), np.floor(tl/3))
+        '''
+        if tl <= 3:
+            (fl, ml, el) = (np.ceil(tl/3), np.floor(tl/3), np.round(tl/3))
+        else:       
+            fl = np.floor(tl/4)
+            el = fl
+            ml = tl - el - fl
+        '''
         y.extend([fID]*fl)
         y.extend([mID]*ml)
         y.extend([eID]*el)
@@ -238,8 +285,11 @@ if __name__=='__main__':
     #which_set = 'DEV'
     winsize = 400
     shift = 160
-    savetype = 'phn' # 'phn' for phone id, 'pdf' for pdf-id
-    fmt = 'mat' # 'mat' for .mat formatting, 'pln' for plain txt
+    qtype = 'amb'
+    savetype = 'pdf' # 'phn' for phone id, 'pdf' for pdf-id
+    fmt = 'pln' # 'mat' for .mat formatting, 'pln' for plain txt
+    postfix = '61'
     #[make_timit_label(x, winsize, shift, 'nosave') for x in ['DEV','TRAIN','TEST']]
-    [make_timit_label(which_set, winsize, shift, savetype, fmt) \
-        for which_set in ['DEV','TRAIN','TEST']]
+    [make_timit_label(which_set, winsize, shift, savetype, qtype, fmt, postfix) \
+        for which_set in ['TRAIN']]
+        #for which_set in ['DEV','TRAIN','TEST']]
