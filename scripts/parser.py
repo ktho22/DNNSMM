@@ -7,9 +7,7 @@ import cPickle as pkl
 import ipdb
 
 alidir = '/home/thkim/libs/kaldi/egs/timit/s5/exp/tri3_ali'
-#arkdir = '/home/thkim/libs/kaldi/egs/timit/s5/data-mfcc-deltas'
 arkdir = '/home/thkim/libs/kaldi/egs/timit/s5/data-fmllr-tri3'
-#arkdir = '/home/thkim/libs/kaldi/egs/timit/s5/data-fmllr-tri3-tmp'
 savepath = '/dataset/kaldi/data-fmllr-tri3' 
 matpath = '/dataset/kaldi/data-fmllr-tri3-edited'
 mdlpath = '/home/thkim/libs/kaldi/egs/timit/s5/exp/dnn_fmllr_timit_tri_l10_n2048_61'
@@ -237,5 +235,5 @@ if __name__=='__main__':
     #map(fprop,['test'])
     #[arkplntomat(x) for x in ['test']]
 
-    map(fprop,['train'])
-    [arkplntomat10(x) for x in ['train']]
+    #map(fprop,['train'])
+    #[arkplntomat10(x) for x in ['train']]
