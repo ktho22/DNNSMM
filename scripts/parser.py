@@ -12,7 +12,7 @@ arkdir = '/home/thkim/libs/kaldi/egs/timit/s5/data-fmllr-tri3'
 #arkdir = '/home/thkim/libs/kaldi/egs/timit/s5/data-fmllr-tri3-tmp'
 savepath = '/dataset/kaldi/data-fmllr-tri3' 
 matpath = '/dataset/kaldi/data-fmllr-tri3-edited'
-mdlpath = '/home/thkim/libs/kaldi/egs/timit/s5/exp/dnn_fmllr_timit_tri_l7_n1024_61'
+mdlpath = '/home/thkim/libs/kaldi/egs/timit/s5/exp/dnn_fmllr_timit_tri_l10_n2048_61'
 
 # Using trained DNN model (mdlpath), we can obtain fproped values
 def fprop(which_set):
@@ -23,8 +23,8 @@ def fprop(which_set):
     #cntfile = '/home/thkim/libs/kaldi/egs/timit/s5/exp/dnn4_pretrain-dbn_dnn/ali_train_pdf.counts'
 
     datadir = join(datadir,'data')
-    postfix = '' 
-    #postfix = '--use-gpu=yes' 
+    #postfix = '' 
+    postfix = '--use-gpu=yes' 
     #postfix = '--use-gpu=yes --no-softmax=true' 
     #postfix = '--use-gpu=yes --no-softmax=true --class-frame-counts=%s' % cntfile
     #postfix = '--use-gpu=yes --apply-log=true --class-frame-counts=%s' % cntfile
@@ -119,6 +119,56 @@ def aliplntomat(which_set,nmodel):
         'uttidx':uttidx}
     scipy.io.savemat(join(matpath,varname),{varname:tempvar},appendmat=True)
 
+def arkplntomat10(which_set):
+    datadir = savepath
+    key = mdlpath.split('/')[-1]
+    arkfiles = [ f for f in listdir(datadir) if key in f and '_'+which_set in f]
+    #arkfiles = [ f for f in listdir(datadir) if '_'+which_set in f and 'tmp.' in f]
+    arkfiles.sort(key=natural_keys)
+
+    for fname in arkfiles:
+        
+        uttname = []
+        uttlength = []
+        feats = []
+        
+        print 'file %s is processing ...' % fname
+        rid = open(join(savepath,fname),'r')
+        cnt = 0 
+        line = rid.readline()
+        while not line in [[], '']:
+            spline = line.split()
+            if spline[-1]=='[':
+                uttname.append(spline[0])
+            elif spline[-1]==']':
+                feat = map(float,spline[:-1])
+                feats.append(feat)
+                uttlength.append(cnt+1)
+                cnt=0
+            else:
+                cnt += 1     
+                feat = map(float,spline)
+                feats.append(feat)
+            line = rid.readline()
+        rid.close()
+
+        uttendidx = np.cumsum(uttlength)
+        uttstidx = [0]
+        uttstidx.extend(uttendidx[:-1]+1)
+        uttidx = np.asarray([uttstidx,uttendidx]).T
+       
+        varname = key.replace('-','_')+'_'+which_set 
+        
+        tempvar = {'feats':feats,
+            'uttname':uttname,
+            'uttlength':uttlength,
+            'uttidx':uttidx}
+
+        scipy.io.savemat(join(matpath,fname),{'featinfo':tempvar},appendmat=True)
+        #scipy.io.savemat(join(matpath,varname),{'featinfo':tempvar},appendmat=True)
+    print 'saved at %s' % join(matpath,varname)
+    del feats, uttname, uttlength
+
 # from archive text file, save it into mat file
 def arkplntomat(which_set):
     datadir = savepath
@@ -126,13 +176,13 @@ def arkplntomat(which_set):
     arkfiles = [ f for f in listdir(datadir) if key in f and '_'+which_set in f]
     #arkfiles = [ f for f in listdir(datadir) if '_'+which_set in f and 'tmp.' in f]
     arkfiles.sort(key=natural_keys)
-    
+        
     uttname = []
     uttlength = []
     feats = []
 
-    ipdb.set_trace()
     for fname in arkfiles:
+        
         print 'file %s is processing ...' % fname
         rid = open(join(savepath,fname),'r')
         cnt = 0 
@@ -165,6 +215,7 @@ def arkplntomat(which_set):
         'uttlength':uttlength,
         'uttidx':uttidx}
 
+    #scipy.io.savemat(join(matpath,fname),{'featinfo':tempvar},appendmat=True)
     scipy.io.savemat(join(matpath,varname),{'featinfo':tempvar},appendmat=True)
     print 'saved at %s' % join(matpath,varname)
     del feats, uttname, uttlength
@@ -183,8 +234,8 @@ if __name__=='__main__':
     #[aliplntomat(x,'tri') for x in ['dev','test','train']]
     #[aliplntomat(x,'mono') for x in ['dev','test','train']]
     
-    #map(fprop,['train','test'])
-    [arkplntomat(x) for x in ['train','test']]
+    #map(fprop,['test'])
+    #[arkplntomat(x) for x in ['test']]
 
-    #map(fprop,['train'])
-    #[arkplntomat(x) for x in ['train']]
+    map(fprop,['train'])
+    [arkplntomat10(x) for x in ['train']]

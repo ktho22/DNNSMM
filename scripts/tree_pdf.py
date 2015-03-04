@@ -152,7 +152,7 @@ def most_common(lst):
     return max(set(lst), key=lst.count)
 
 if __name__=='__main__':
-    fmt = 'pln'  
+    fmt = 'mat'  
     [tree_pdf(x,'tri',fmt) for x in ['TRAIN']]
     #[tree_pdf(x,'tri',fmt) for x in ['DEV']]
     #[tree_pdf(x,'tri') for x in ['DEV','TRAIN','TEST']]

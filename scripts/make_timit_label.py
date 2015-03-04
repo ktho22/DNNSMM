@@ -15,13 +15,16 @@ from os.path import isfile, isdir, join, splitext, basename
 from itertools import groupby
 import numpy as np
 
+kaldidir = '/home/thkim/libs/kaldi'
 datadir = '/dataset/kaldi/data-fmllr-tri3'
-savedir = '/dataset/kaldi/data-fmllr-tri3-edited'
+savedir = '.'
+#savedir = '/dataset/kaldi/data-fmllr-tri3-edited'
 timitdir = '/dataset/timit/TIMIT'
 
 def make_timit_label(which_set, 
                     winsize, 
-                    shift, 
+                    shift,
+                    nphns='48',
                     savetype='phn',
                     qtype='amb',
                     fmt = 'nosave',
@@ -39,6 +42,8 @@ def make_timit_label(which_set,
     # Obtain directory informations from TIMIT
     timitpath = join(timitdir,which_set_timit)
     subdirs = [x[0] for x in os.walk(timitpath) if x[1]==[]]
+
+    # Make utterence list
     uttlist=[]
     for sub in subdirs:
         uttlist.extend([join(sub,x) for x in listdir(sub) if x.endswith('PHN')])
@@ -48,6 +53,7 @@ def make_timit_label(which_set,
     else:
         postfix = '_'+postfix
 
+    # Set output information
     savename = join(savedir,'ali_mono_true_'+savetype+'_'+qtype+'_'+which_set+postfix)
     if fmt == 'pln':
         wid = open(savename+'.ark','w')
@@ -62,18 +68,23 @@ def make_timit_label(which_set,
 
     pdfcount = np.zeros((200))
     alisum = 0
-    #for ali in ['FADG0_SI1909']:
     for ali in alilist:
         spk, utt = ali.split('_')
         uttpath =filter(lambda x:spk in x and utt+'.PHN' in x, uttlist)[0]
         with open(uttpath,'r') as fid:
             phns = fid.read().split('\n')
 
-        # mapping from phns to phnlst
+        # mapping from single line sting to phone list
         phnlst60 = make_phonelist(phns,winsize,shift)
-        phnlst48 = phone60to48(phnlst60)
-        #phnlst = phone48toidx(phnlst48,qtype)
-        phnlst = phone61toidx(phnlst60,qtype)
+
+        # mapping phone list to index list
+        if nphns=='48':
+            phnlst48 = phone60to48(phnlst60)
+            phnlst = phone48toidx(phnlst48,qtype)
+        elif nphns=='61':
+            phnlst = phone61toidx(phnlst60,qtype)
+        else:
+            raise ValueError('Number of phones should be 61 or 48')
 
         # Compare to the length of waveform, refine the length of labels
         ind = alilist.index(ali)
@@ -148,7 +159,7 @@ def make_phonelist(phns,winsize,shift,type='cut'):
     return phnlst
 
 def phone60to48(phone60):
-    mapfile = '/home/thkim/libs/kaldi/egs/timit/s5/conf/phones.60-48-39.map'
+    mapfile = kaldidir+'/egs/timit/s5/conf/phones.60-48-39.map'
     with open(mapfile,'r') as fid:
         prephmap = fid.read().split('\n')
 
@@ -169,7 +180,7 @@ def phone60to48(phone60):
     return phone48
 
 def phone61toidx(phone61,q='amb'):
-    mapfile = 'phones61.txt'
+    mapfile = 'phones61'
     with open(mapfile,'r') as fid:
         prephmap = fid.read().split('\n')
     phmap = []
@@ -188,7 +199,7 @@ def phone61toidx(phone61,q='amb'):
     return phoneIds
 
 def phone48toidx(phone48,q='amb'):
-    mapfile = '/home/thkim/libs/kaldi/egs/timit/s5/data/lang/phones.txt'
+    mapfile = kaldidir+'/egs/timit/s5/data/lang/phones.txt'
     with open(mapfile,'r') as fid:
         prephmap = fid.read().split('\n')
     phmap = []
@@ -285,11 +296,12 @@ if __name__=='__main__':
     #which_set = 'DEV'
     winsize = 400
     shift = 160
-    qtype = 'amb'
+    nphns = '61' # whether 51 based phone or 48 based phone
+    qtype = 'amb' # 'amb' maps q to sil, 'pre' maps q to prephone
     savetype = 'pdf' # 'phn' for phone id, 'pdf' for pdf-id
-    fmt = 'pln' # 'mat' for .mat formatting, 'pln' for plain txt
-    postfix = '61'
+    fmt = 'mat' # 'mat' for .mat formatting, 'pln' for plain txt
+    postfix = ''
     #[make_timit_label(x, winsize, shift, 'nosave') for x in ['DEV','TRAIN','TEST']]
-    [make_timit_label(which_set, winsize, shift, savetype, qtype, fmt, postfix) \
+    [make_timit_label(which_set, winsize, shift, nphns, savetype, qtype, fmt, postfix) \
         for which_set in ['TRAIN']]
         #for which_set in ['DEV','TRAIN','TEST']]
